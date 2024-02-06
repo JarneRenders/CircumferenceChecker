@@ -58,10 +58,15 @@ output graph (if it passes through the filter).\n\
 #include "libs/bitset.h"
 #include "libs/hamiltonicityMethods.h"
 
-void printGraph(bitset adjacencyList[], int numberOfVertices) {
-    for(int i = 0; i < numberOfVertices; i++) {
+struct graph {
+    bitset *adjacencyList;
+    int nv;
+};
+
+void printGraph(struct graph *g) {
+    for(int i = 0; i < g->nv; i++) {
         fprintf(stderr, "%d: ", i);
-        forEach(nbr, adjacencyList[i]) {
+        forEach(nbr, g->adjacencyList[i]) {
             fprintf(stderr, "%d ", nbr);
         }
         fprintf(stderr, "\n");
@@ -69,18 +74,29 @@ void printGraph(bitset adjacencyList[], int numberOfVertices) {
     fprintf(stderr, "\n");
 }
 
-bool canBeCycleOfLength(bitset adjacencyList[], bitset remainingVertices, int
+//******************************************************************************
+//
+//                   Methods for circumference checker
+//
+//******************************************************************************
+
+bool canBeCycleOfLength(struct graph *g, bitset remainingVertices, int
 lastElemOfPath, int firstElemOfPath, int cycleLength, int pathLength) {
 
-    if((pathLength == cycleLength) && contains(adjacencyList[firstElemOfPath], lastElemOfPath)) {
+    // Check if current path is a cycle of the required length.
+    if((pathLength == cycleLength) &&
+     contains(g->adjacencyList[firstElemOfPath], lastElemOfPath)) {
         return true;
     }
-    if(isEmpty(intersection(adjacencyList[firstElemOfPath],remainingVertices))) { 
+
+    // If start of path cannot be closed, path cannot become a cycle.
+    if(isEmpty(intersection(g->adjacencyList[firstElemOfPath],
+     remainingVertices))) { 
         return false;
     }
 
     bitset neighboursOfLastNotInPath = 
-     intersection(adjacencyList[lastElemOfPath], remainingVertices);
+     intersection(g->adjacencyList[lastElemOfPath], remainingVertices);
     forEach(neighbour, neighboursOfLastNotInPath) {
 
         int oldElemOfPath = lastElemOfPath;
@@ -88,7 +104,7 @@ lastElemOfPath, int firstElemOfPath, int cycleLength, int pathLength) {
         removeElement(remainingVertices, neighbour);
         lastElemOfPath = neighbour; // Neighbour is the new last element.
 
-        if (canBeCycleOfLength(adjacencyList, remainingVertices, lastElemOfPath,
+        if (canBeCycleOfLength(g, remainingVertices, lastElemOfPath, 
          firstElemOfPath, cycleLength, pathLength + 1)) {
             return true;
         }
@@ -100,85 +116,122 @@ lastElemOfPath, int firstElemOfPath, int cycleLength, int pathLength) {
     return false;
 }
 
-int getCircumference(bitset adjacencyList[], int numberOfVertices, bitset excludedVertices) {
-    for(int i = numberOfVertices; i > 2; i--) {
-        bitset forbiddenVertices = excludedVertices;
-        for(int j = numberOfVertices - i; j >= 0; j--) {
 
-            bitset includedVertices = complement(forbiddenVertices, numberOfVertices);
+// Function to find an included vertex with the lowest degree.
+int findLowestDegreeVertex(struct graph *g, bitset includedVertices) {
+
+    // First included vertex.
+    int start = next(includedVertices, -1);
+    int lowestDegree = size(g->adjacencyList[start]);
+
+    // Find an included vertex of lowest degree.
+    forEachAfterIndex(u, includedVertices, start) {
+        int degree = size(intersection(g->adjacencyList[u], includedVertices));
+
+        if (lowestDegree > degree) {
+            lowestDegree = degree;
+            start = u;
+        }
+    }
+
+    return start;
+}
+
+int getCircumference(struct graph *g, bitset excludedVertices) {
+
+    // Check backwards from k = n to 3 if there is a cycle of length k.
+    for(int i = g->nv; i > 2; i--) {
+
+        bitset forbiddenVertices = excludedVertices;
+
+        // Repeatedly check for a k-cycle in which the previous starting vertex
+        // (v) is also forbidden.
+        for(int j = g->nv - i; j >= 0; j--) {
+
+            bitset includedVertices = 
+             complement(forbiddenVertices, g->nv);
 
             if(isEmpty(includedVertices)) return false;
 
-            // First included vertex.
-            int startingVertex = next(includedVertices,-1);
-            int lowestDegree = size(adjacencyList[startingVertex]);
+            int v = findLowestDegreeVertex(g, includedVertices); 
 
-            //  Find an included vertex of lowest degree.
-            forEachAfterIndex(includedVertex, includedVertices, startingVertex){
-                int degreeOfNeighbour = 
-                 size(intersection(adjacencyList[includedVertex], includedVertices));
-                if(lowestDegree > degreeOfNeighbour) {
-                    lowestDegree = degreeOfNeighbour;
-                    startingVertex = includedVertex;
-                }
-            }
+            // Loop over included neighbours of start and for each such
+            // neighbour loop over the included neighbours of start that are of
+            // higher index. 
+            forEach(w, intersection(g->adjacencyList[v], includedVertices)) {
+                forEachAfterIndex(u, 
+                 intersection(g->adjacencyList[v], includedVertices), w) {
 
-            // Loop over included neighbours of startingVertex and for each such
-            // neighbour loop over the included neighbours of startingVertex that are
-            // of higher index.
-            forEach(secondElemOfPath, intersection(adjacencyList[startingVertex], includedVertices)) {
-                forEachAfterIndex(lastElemOfPath, intersection(adjacencyList[startingVertex], includedVertices), secondElemOfPath) {
+                    // Create path uvw. We have u > w, so that we eliminate the
+                    // checking of paths which are mirrored.
+                    bitset path = singleton(v);
+                    add(path, u);
+                    add(path, w);
+                    bitset remainingVertices = 
+                     difference(includedVertices, path);
 
-                    // Create path, lastElemOfPath, startingVertex, secondElemOfPath.
-                    // We have lastElemOfPath > secondElemOfPath, so that we
-                    // eliminate the checking of paths which are mirrored.
-                    bitset path = singleton(startingVertex);
-                    add(path, lastElemOfPath);
-                    add(path, secondElemOfPath);
-                    bitset remainingVertices = difference(includedVertices, path);
-
-                    if (canBeCycleOfLength(adjacencyList, remainingVertices,
-                     lastElemOfPath, secondElemOfPath, i - size(excludedVertices), 3)) {
+                    if (canBeCycleOfLength(g, remainingVertices, u, w,
+                     i - size(excludedVertices), 3)) {
                         return i;
                     }
                 }
             }
-            add(forbiddenVertices, startingVertex);
+            add(forbiddenVertices, v);
         }
     }
     return 0;
 }
 
-void lengthOfLongestInducedSuperCycle(bitset adjacencyList[], bitset remainingVertices, int
- lastElemOfPath, int firstElemOfPath, int *longestCycleLength, unsigned long long int numberOfLengths[], int pathLength) {
 
-    // Check whether we have a longest induced path already and whether this path
-    // is a cycle.
-    if(contains(adjacencyList[firstElemOfPath], lastElemOfPath)) {
+//******************************************************************************
+//
+//                      Longest induced cycle
+//
+//******************************************************************************
+
+void lengthOfLongestInducedSuperCycle(struct graph *g, bitset remainingVertices,
+ int lastElemOfPath, int firstElemOfPath, int *longestCycleLength,
+ unsigned long long int numberOfLengths[], int pathLength) {
+
+    // Check whether we have a longest induced path already and whether this
+    // path is a cycle.
+    if(contains(g->adjacencyList[firstElemOfPath], lastElemOfPath)) {
         if(pathLength > *longestCycleLength) {
             *longestCycleLength = pathLength;
         }
+
+        // Counter number of lengths of induced cycles. Used for keeping track
+        // of graphs with forbidden lengths of induced cycles.
         numberOfLengths[pathLength]++;
-        return; //  Need to return because we already have a cycle.
+
+        //  Need to return because we already have a cycle. 
+        return;
     }
 
     // Check if cycle can still be closed with remaining vertices.
-    if(isEmpty(intersection(adjacencyList[firstElemOfPath],remainingVertices))) { 
+    if(isEmpty(intersection(g->adjacencyList[firstElemOfPath], 
+     remainingVertices))) { 
         return;
     }
 
     bitset neighboursOfLastNotInPath = 
-     intersection(adjacencyList[lastElemOfPath], remainingVertices);
+     intersection(g->adjacencyList[lastElemOfPath], remainingVertices);
+
     forEach(neighbour, neighboursOfLastNotInPath) {
 
         int oldElemOfPath = lastElemOfPath;
 
-        //  Delete neighbours of oldElemOfPath since no chord are allowed in the induced cycle.
-        remainingVertices = difference(remainingVertices, adjacencyList[oldElemOfPath]);
-        bitset deletedVertices = difference(adjacencyList[oldElemOfPath], remainingVertices);
+        //  Delete neighbours of oldElemOfPath since no chord are allowed in the
+        //  induced cycle.
+        remainingVertices = difference(remainingVertices,
+         g->adjacencyList[oldElemOfPath]);
+
+        bitset deletedVertices = difference(g->adjacencyList[oldElemOfPath],
+         remainingVertices);
+
         lastElemOfPath = neighbour;
 
-        lengthOfLongestInducedSuperCycle(adjacencyList, remainingVertices, lastElemOfPath,
+        lengthOfLongestInducedSuperCycle(g, remainingVertices, lastElemOfPath,
          firstElemOfPath, longestCycleLength, numberOfLengths, pathLength + 1);
 
         //  Once oldElemOfPath is again an end of the path, the neighbours we
@@ -188,31 +241,52 @@ void lengthOfLongestInducedSuperCycle(bitset adjacencyList[], bitset remainingVe
     }
 }
 
-int getLongestInducedCycleLength(bitset adjacencyList[], int numberOfVertices, unsigned long long int numberOfLengths[]) {
+int getLongestInducedCycleLength(struct graph *g, 
+ unsigned long long int numberOfLengths[]) {
+
     int longestInducedCycleLength = 0;
-    for(int i = 0; i < numberOfVertices; i++) {
-        bitset includedVertices = complement(EMPTY, numberOfVertices);
 
-        // Loop over included neighbours of startingVertex and for each such
-        // neighbour loop over the included neighbours of startingVertex that are
-        // of higher index.
-        forEachAfterIndex(secondElemOfPath, intersection(adjacencyList[i], includedVertices), i) {
-            forEachAfterIndex(lastElemOfPath, intersection(adjacencyList[i], includedVertices), secondElemOfPath) {
+    // Loop over all vertices v and find the longed induced cycle going through
+    // it.
+    for(int v = 0; v < g->nv; v++) {
 
-                bitset remainingVertices = difference(includedVertices, union(adjacencyList[i], singleton(i)));
+        bitset includedVertices = complement(EMPTY, g->nv);
 
-                lengthOfLongestInducedSuperCycle(adjacencyList, remainingVertices,
-                 lastElemOfPath, secondElemOfPath, &longestInducedCycleLength, numberOfLengths, 3);
+        // Loop over included neighbours w of v and for each w loop over the
+        // included neighbours u of v that are of higher index than w.
+        forEachAfterIndex(w, intersection(g->adjacencyList[v], includedVertices),
+         v) {
+            forEachAfterIndex(u, 
+             intersection(g->adjacencyList[v], includedVertices), w) {
+
+                bitset remainingVertices = difference(includedVertices,
+                 union(g->adjacencyList[v], singleton(v)));
+
+                // Stores length of longest induced cycle containing uvw in
+                // longestInducedCycleLength if it is the largest length
+                // encountered.
+                lengthOfLongestInducedSuperCycle(g, remainingVertices, u, w,
+                 &longestInducedCycleLength, numberOfLengths, 3);
             }
         }
     }
+
     return longestInducedCycleLength;
 }
 
-void lengthOfLongestInducedSuperPath(bitset adjacencyList[], bitset remainingVertices, int
- lastElemOfPath, int firstElemOfPath, int *longestCycleLength, unsigned long long int numberOfLengths[], int pathLength) {
+//******************************************************************************
+//
+//                          Longest induced path
+//
+//******************************************************************************
 
-    // Count frequency of induced paths. length of a path is number of edges, not vertices. 
+void lengthOfLongestInducedSuperPath(struct graph *g, bitset remainingVertices,
+ int lastElemOfPath, int firstElemOfPath, int *longestCycleLength,
+ unsigned long long int numberOfLengths[], int pathLength) {
+
+    // Count frequency of induced paths. Length of a path is number of edges,
+    // not vertices. Used for keeping track of graphs with forbidden induced
+    // path sizes.
     numberOfLengths[pathLength - 1]++;
 
     // Check whether we have a longest induced path already.
@@ -221,16 +295,21 @@ void lengthOfLongestInducedSuperPath(bitset adjacencyList[], bitset remainingVer
     }
     
     bitset neighboursOfLastNotInPath = 
-     intersection(adjacencyList[lastElemOfPath], remainingVertices);
+     intersection(g->adjacencyList[lastElemOfPath], remainingVertices);
+
     forEach(neighbour, neighboursOfLastNotInPath) {
 
         int oldElemOfPath = lastElemOfPath;
 
-        remainingVertices = difference(remainingVertices, adjacencyList[oldElemOfPath]);
-        bitset deletedVertices = difference(adjacencyList[oldElemOfPath], remainingVertices);
-        lastElemOfPath = neighbour; // Neighbour is the new last element.
+        remainingVertices = 
+         difference(remainingVertices, g->adjacencyList[oldElemOfPath]);
+        bitset deletedVertices = 
+         difference(g->adjacencyList[oldElemOfPath], remainingVertices);
 
-        lengthOfLongestInducedSuperPath(adjacencyList, remainingVertices, lastElemOfPath,
+        // Neighbour is the new last element.
+        lastElemOfPath = neighbour; 
+
+        lengthOfLongestInducedSuperPath(g, remainingVertices, lastElemOfPath,
          firstElemOfPath, longestCycleLength, numberOfLengths, pathLength + 1);
 
         remainingVertices = union(remainingVertices, deletedVertices);
@@ -238,15 +317,20 @@ void lengthOfLongestInducedSuperPath(bitset adjacencyList[], bitset remainingVer
     }
 }
 
-int getLongestInducedPathLength(bitset adjacencyList[], int numberOfVertices, unsigned long long int numberOfLengths[]) {
+int getLongestInducedPathLength(struct graph *g, 
+ unsigned long long int numberOfLengths[]) {
+
     int longestInducedPathLength = 0;
 
-    for(int i = 0; i < numberOfVertices; i++) {
-        bitset remainingVertices = complement(adjacencyList[i], numberOfVertices);
-        removeElement(remainingVertices, i);
-        forEach(neighbour, adjacencyList[i]) {
-            lengthOfLongestInducedSuperPath(adjacencyList, remainingVertices,
-                neighbour, i, &longestInducedPathLength, numberOfLengths, 2);
+    // For each vertex find a longest induced path starting with v.
+    for(int v = 0; v < g->nv; v++) {
+
+        bitset remainingVertices = complement(g->adjacencyList[v], g->nv);
+        removeElement(remainingVertices, v);
+
+        forEach(w, g->adjacencyList[v]) {
+            lengthOfLongestInducedSuperPath(g, remainingVertices, w, v,
+             &longestInducedPathLength, numberOfLengths, 2);
         }
     }
 
@@ -254,26 +338,62 @@ int getLongestInducedPathLength(bitset adjacencyList[], int numberOfVertices, un
     return longestInducedPathLength - 1;
 }
 
-bool shouldOutput(int numberOfVertices, int length, unsigned long long int numberOfLengths[], int output, int forbiddenLength, int optionsNumber, bool complementFlag, bool pathFlag) {
-    //  True if complementFlag is false, false if complementFlag is true.
-    bool complementTrue = (!true != !complementFlag);
-    bool complementFalse = (!false != !complementFlag);
+//******************************************************************************
+//
+//                          Parsing flags
+//
+//******************************************************************************
+
+struct options {
+    bool cycleFlag;
+    bool pathFlag;
+    bool differenceFlag;
+    bool complementFlag;
+    int forbiddenLength;
+    int output;
+};
+
+bool shouldOutput(struct graph *g, int length, 
+ unsigned long long int numberOfLengths[],  int optionsNumber, 
+ struct options *options) {
+
+    bool forbiddenLengthTooLong;
+
+    //  ComplementTrue is true if complementFlag is false, false if
+    //  complementFlag is true.
+    bool complementTrue = (!true != !options->complementFlag);
+    bool complementFalse = (!false != !options->complementFlag);
+
     switch(optionsNumber) {
+
+        //  Not present: -d, -f#.
         case 0:
-            if(length == output) {
+            if(length == options->output) {
                 return complementTrue;
             }
             return complementFalse;
+
+        //  Present: -d, not present: -f#.
         case 1:
-            if(numberOfVertices - length == output) {
+            if(g->nv - length == options->output) {
                 return complementTrue;
             }
             return complementFalse;
+
+        //  Present: -f#, Not present: -d
         case 2:
-            if((pathFlag ? forbiddenLength >= numberOfVertices : forbiddenLength > numberOfVertices) || numberOfLengths[forbiddenLength] == 0) {
+
+            // Length of path can be at most n-1 (edges!) of cycles at most n. 
+            forbiddenLengthTooLong =
+             (options->pathFlag && options->forbiddenLength >= g->nv) ||
+             (options->cycleFlag && options->forbiddenLength > g->nv);
+
+            if(forbiddenLengthTooLong || 
+             numberOfLengths[options->forbiddenLength] == 0) {
                 return complementTrue;
             }
             return complementFalse;
+
         default:
             fprintf(stderr, "Invalid combination of options.\n");
             fprintf(stderr, "%s\n", USAGE);
@@ -281,15 +401,45 @@ bool shouldOutput(int numberOfVertices, int length, unsigned long long int numbe
     }
 }
 
+void printTable(unsigned long long int frequencies[], char *tableString) {
+
+    for (int i = 0; i < BITSETSIZE; ++i) {
+        if(frequencies[i] != 0) {
+            fprintf(stderr, "\n \t%16lld graphs: %s = %d",
+             frequencies[i], tableString, i);
+        }
+    }
+    fprintf(stderr, "\n");
+}
+
+void printNumberGraphsOutput(struct options *options,
+ long long unsigned int passedGraphs, char *tableString) {
+
+    if(options->output != -1 || options->forbiddenLength != -1) {
+        if(passedGraphs > 0) {
+            fprintf(stderr, "%lld graphs sent to stdout.\n", passedGraphs);
+        }
+        else {
+            if(options->output != -1) {
+                fprintf(stderr, "\nNo graphs found with %s %d \n",
+                 tableString, options->output);
+            }
+            if(options->forbiddenLength != -1) {
+                fprintf(stderr, 
+                 "\nNo graphs found without induced %s of forbidden length %d\n",
+                 options->pathFlag ? "path" : "cycle", options->forbiddenLength);
+            }
+        }
+    }
+}
 
 int main(int argc, char ** argv) {
-    bool cycleFlag = false;
-    bool pathFlag = false;
-    bool differenceFlag = false;
-    bool complementFlag = false;
-    int forbiddenLength = -1;
+
+    struct options options = {0};
+    options.forbiddenLength = -1;
+    options.output = -1;
     char* tableString = "circumference";
-    int output = -1;
+
     int opt;
     while (1) {
         int option_index = 0;
@@ -308,28 +458,28 @@ int main(int argc, char ** argv) {
         if (opt == -1) break;
         switch(opt) {
             case 'c':
-                cycleFlag = true;
+                options.cycleFlag = true;
                 tableString = "longest induced cycle";
                 break;
             case 'C':
-                complementFlag = true;
+                options.complementFlag = true;
                 break;
             case 'd':
-                differenceFlag = true;
+                options.differenceFlag = true;
                 tableString = "order - circumference";
                 break;
             case 'f':
-                forbiddenLength = (int) strtol(optarg, (char **)NULL, 10);
+                options.forbiddenLength = (int) strtol(optarg, (char **)NULL, 10);
                 break;
             case 'h':
                 fprintf(stderr, "%s\n", USAGE);
                 fprintf(stderr, "%s", HELPTEXT);
                 return 0;
             case 'o':
-                output = (int) strtol(optarg, (char **)NULL, 10);
+                options.output = (int) strtol(optarg, (char **)NULL, 10);
                 break;
             case 'p':
-                pathFlag = true;
+                options.pathFlag = true;
                 tableString = "longest induced path";
                 break;
             case '?':
@@ -341,31 +491,33 @@ int main(int argc, char ** argv) {
         }
     }
 
-    if(forbiddenLength != -1 && output != -1) {
+    if(options.forbiddenLength != -1 && options.output != -1) {
         fprintf(stderr,
-         "Warning: -f need not be used with -o. This will probably not give the result you expect.\n");
+         "Warning: -f should not be used with -o. This will probably not give the result you expect.\n");
         fprintf(stderr,
          "Use ./circumferenceChecker --help for more detailed instructions.\n");
     }
 
-    if(cycleFlag && pathFlag) {
+    if(options.cycleFlag && options.pathFlag) {
         fprintf(stderr, "Invalid combination of options.\n");
         fprintf(stderr, "%s\n", USAGE);
         return 1;
     }
-    if(!cycleFlag && !pathFlag && forbiddenLength != -1) {
+    if(!options.cycleFlag && !options.pathFlag && 
+     options.forbiddenLength != -1) {
         fprintf(stderr, "Use -f only with -c or -p.\n");
         fprintf(stderr, "%s\n", USAGE);
         return 1;
     }
 
-    int optionsNumber = (differenceFlag ? 1 : 0) |
-                        (forbiddenLength != -1 ? 2 : 0);
+    int optionsNumber = (options.differenceFlag ? 1 : 0) |
+                        (options.forbiddenLength != -1 ? 2 : 0);
 
     unsigned long long int counter = 0;
     unsigned long long int skippedGraphs = 0;
     unsigned long long int passedGraphs = 0;
-    unsigned long long int frequencies[BITSETSIZE] = { [ 0 ... BITSETSIZE-1 ] = 0 };
+    unsigned long long int frequencies[BITSETSIZE] =
+     { [ 0 ... BITSETSIZE-1 ] = 0 };
 
     clock_t start = clock();
 
@@ -373,64 +525,66 @@ int main(int argc, char ** argv) {
     char * graphString = NULL;
     size_t size;
     while(getline(&graphString, &size, stdin) != -1) {
-        int nVertices = getNumberOfVertices(graphString);
-        if(nVertices == -1 || nVertices > BITSETSIZE) {
+
+        struct graph g;
+        g.nv = getNumberOfVertices(graphString);
+        if(g.nv == -1 || g.nv > BITSETSIZE - 1) {
             fprintf(stderr, "Skipping invalid graph!\n");
             skippedGraphs++;
             continue;
         }
-        bitset adjacencyList[nVertices];
-        if(loadGraph(graphString, nVertices, adjacencyList) == -1) {
+        bitset adjacencyList[g.nv];
+        if(loadGraph(graphString, g.nv, adjacencyList) == -1) {
             fprintf(stderr, "Skipping invalid graph!\n");
             skippedGraphs++;
             continue;
         }
+        g.adjacencyList = adjacencyList;
         counter++;
 
-
+        // Length is largest length of (induced) cycle(or path). numberOfLenghts
+        // keeps track of each length encountered for the induced paths or
+        // cycles. Used for not counting forbidden induced cycle or path
+        // lengths.
         int length;
-        unsigned long long int numberOfLengths[nVertices + 1];
-        memset(numberOfLengths,0, (nVertices+1)*sizeof(unsigned long long int));
-        if(cycleFlag) {
-            length = getLongestInducedCycleLength(adjacencyList, nVertices, numberOfLengths);
+        unsigned long long int numberOfLengths[BITSETSIZE] = 
+         { [ 0 ... BITSETSIZE-1 ] = 0 };
+
+        if(options.cycleFlag) {
+            length = getLongestInducedCycleLength(&g, numberOfLengths);
         }
-        else if(pathFlag) {
-            length = getLongestInducedPathLength(adjacencyList, nVertices, numberOfLengths);
+        else if(options.pathFlag) {
+            length = getLongestInducedPathLength(&g, numberOfLengths);
         }
         else {
-            length = getCircumference(adjacencyList, nVertices, EMPTY);
+            length = getCircumference(&g, EMPTY);
         }
 
-        if(shouldOutput(nVertices, length, numberOfLengths, output, forbiddenLength, optionsNumber, complementFlag, pathFlag)) {
+        if(shouldOutput(&g, length, numberOfLengths,  optionsNumber, &options)) {
             passedGraphs++;
             printf("%s", graphString);
         }
-        if(differenceFlag) {
-            frequencies[nVertices - length]++;
+        if(options.differenceFlag) {
+            frequencies[g.nv - length]++;
         }
         else {
             frequencies[length]++;
         }
     }
+
     clock_t end = clock();
     double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+    free(graphString);
 
-    for (int i = 0; i < BITSETSIZE; ++i) {
-        if(frequencies[i] != 0) {
-            fprintf(stderr, "\n \t%16lld graphs: %s = %d", frequencies[i],tableString, i);
-        }
-    }
-    fprintf(stderr, "\n");
-    if(passedGraphs > 0 || output != -1 || forbiddenLength != -1) {
-        if(frequencies[output] > 0 || complementFlag) {
-            fprintf(stderr, "%lld graphs sent to stdout.\n", passedGraphs);
-        }
-        else
-            fprintf(stderr, "\nNo graphs found with %s %d \n", tableString, output);
-    }
+    // Print data
+    printTable(frequencies, tableString);
 
-    fprintf(stderr,"\rChecked %lld graphs in %f seconds.\n", counter, time_spent);
+    // Mention how many graphs were output
+    printNumberGraphsOutput(&options, passedGraphs, tableString);
 
+    // Mention how many graphs checked
+    fprintf(stderr,"\rChecked %lld graphs in %f seconds.\n",
+     counter, time_spent);
 
     return 0;
 }

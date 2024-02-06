@@ -14,8 +14,8 @@ This requires a working shell and `make`. On Windows an easy way to simulate thi
   * `make 256bit` to create a binary for the 256 bit version
   * `make all` to create all of the above
 
-The 64 bit version can handle graphs up to 64 vertices, the 128 bit version up to 128 vertices, etc.
-Lower bit versions are always faster than the higher bit ones, hence it is recommended to use the version which higher, but closest to the order of the graphs you want to inspect.
+The 64 bit version can handle graphs up to 63 vertices, the 128 bit version up to 127 vertices, etc.
+Lower bit versions are always faster than the higher bit ones, hence it is recommended to use the version which strictly higher, but closest to the order of the graphs you want to inspect.
 
 
 ### Usage of circumferenceChecker
