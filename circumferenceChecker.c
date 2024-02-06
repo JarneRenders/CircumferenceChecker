@@ -19,11 +19,11 @@
  *
  */
 
-#define USAGE "Usage: ./circumferenceChecker [-cf#|-pf#] [-Cdo#] [-h]"
+#define USAGE "Usage: ./circumferenceChecker [-cf#|-pf#|-l] [-Cdo#] [-h]"
 
 #define HELPTEXT \
-"Count and or filter graphs depending on their circumference, induced cycles\n\
-or paths.\n\
+"Count and or filter graphs depending on their circumference, length,\n\
+induced cycles or paths.\n\
 \n\
 Graphs are read from stdin in graph6 format. Graphs are sent to stdout in\n\
 graph6 format. If the input graph had a graph6 header, so will the\n\
@@ -41,7 +41,10 @@ output graph (if it passes through the filter).\n\
             of length # depending on the presence of -c or -p. Length of path\n\
             is the number of edges.\n\
     -h, --help\n\
-            print help message\n\
+            print help message.\n\
+    -l, --length\n\
+            find the length of each graph, i.e. the number of edges in a\n\
+            longest path, and print in a table.\n\
     -o#, --output=#\n\
             send all graphs with value # in the table to stdout.\n\
     -p, --induced-path\n\
@@ -185,6 +188,34 @@ int getCircumference(struct graph *g, bitset excludedVertices) {
 
 //******************************************************************************
 //
+//                          Methods for graph length
+//
+//******************************************************************************
+
+// Free gNew->adjacencyList after!
+void joinWithK1(struct graph *g, struct graph *gNew) {
+    gNew->nv = g->nv + 1;
+    gNew->adjacencyList = malloc(gNew->nv * sizeof(bitset)); 
+
+    for(int i = 0; i < g->nv; i++) {
+        gNew->adjacencyList[i] = union(g->adjacencyList[i], singleton(g->nv));
+    }
+    gNew->adjacencyList[g->nv] = complement(EMPTY, g->nv);
+}
+
+int getLength(struct graph *g) {
+    struct graph g2;
+    joinWithK1(g, &g2); 
+
+    int length = getCircumference(&g2, EMPTY) - 2;
+
+    free(g2.adjacencyList);
+    return length;
+}
+
+
+//******************************************************************************
+//
 //                      Longest induced cycle
 //
 //******************************************************************************
@@ -274,6 +305,7 @@ int getLongestInducedCycleLength(struct graph *g,
     return longestInducedCycleLength;
 }
 
+
 //******************************************************************************
 //
 //                          Longest induced path
@@ -349,6 +381,7 @@ struct options {
     bool pathFlag;
     bool differenceFlag;
     bool complementFlag;
+    bool lengthFlag;
     int forbiddenLength;
     int output;
 };
@@ -394,6 +427,11 @@ bool shouldOutput(struct graph *g, int length,
             }
             return complementFalse;
 
+        case 3:
+            fprintf(stderr, "Do not use -d with -f#.\n");
+            fprintf(stderr, "%s\n", USAGE);
+            exit(1);
+
         default:
             fprintf(stderr, "Invalid combination of options.\n");
             fprintf(stderr, "%s\n", USAGE);
@@ -401,12 +439,15 @@ bool shouldOutput(struct graph *g, int length,
     }
 }
 
-void printTable(unsigned long long int frequencies[], char *tableString) {
+void printTable(struct options *options,
+ unsigned long long int frequencies[], char *tableString) {
 
     for (int i = 0; i < BITSETSIZE; ++i) {
         if(frequencies[i] != 0) {
-            fprintf(stderr, "\n \t%16lld graphs: %s = %d",
-             frequencies[i], tableString, i);
+            fprintf(stderr, "\n \t%16lld graphs: %s%s = %d",
+             frequencies[i],
+             options->differenceFlag ? "order - " : "",
+             tableString, i);
         }
     }
     fprintf(stderr, "\n");
@@ -421,12 +462,15 @@ void printNumberGraphsOutput(struct options *options,
         }
         else {
             if(options->output != -1) {
-                fprintf(stderr, "\nNo graphs found with %s %d \n",
+                fprintf(stderr, "\nNo graphs found %s %s%s %d \n",
+                 options->complementFlag ? "without" : "with",
+                 options->differenceFlag ? "order - " : "",
                  tableString, options->output);
             }
             if(options->forbiddenLength != -1) {
                 fprintf(stderr, 
-                 "\nNo graphs found without induced %s of forbidden length %d\n",
+                 "\nNo graphs found %s induced %s of forbidden length %d\n",
+                 options->complementFlag ? "with" : "without",
                  options->pathFlag ? "path" : "cycle", options->forbiddenLength);
             }
         }
@@ -450,11 +494,12 @@ int main(int argc, char ** argv) {
             {"difference", no_argument, NULL, 'd'},
             {"forbidden", required_argument, NULL, 'f'},
             {"help", no_argument, NULL, 'h'},
+            {"length", no_argument, NULL, 'l'},
             {"output", required_argument, NULL, 'o'},
             {"induced-path", no_argument, NULL, 'p'},
         };
 
-        opt = getopt_long(argc, argv, "cCdf:ho:p", long_options, &option_index);
+        opt = getopt_long(argc, argv, "cCdf:hlo:p", long_options, &option_index);
         if (opt == -1) break;
         switch(opt) {
             case 'c':
@@ -466,7 +511,6 @@ int main(int argc, char ** argv) {
                 break;
             case 'd':
                 options.differenceFlag = true;
-                tableString = "order - circumference";
                 break;
             case 'f':
                 options.forbiddenLength = (int) strtol(optarg, (char **)NULL, 10);
@@ -475,6 +519,10 @@ int main(int argc, char ** argv) {
                 fprintf(stderr, "%s\n", USAGE);
                 fprintf(stderr, "%s", HELPTEXT);
                 return 0;
+            case 'l':
+                options.lengthFlag = true;
+                tableString = "graph length";
+                break;
             case 'o':
                 options.output = (int) strtol(optarg, (char **)NULL, 10);
                 break;
@@ -499,6 +547,11 @@ int main(int argc, char ** argv) {
     }
 
     if(options.cycleFlag && options.pathFlag) {
+        fprintf(stderr, "Invalid combination of options.\n");
+        fprintf(stderr, "%s\n", USAGE);
+        return 1;
+    }
+    if((options.cycleFlag || options.pathFlag) && options.lengthFlag) {
         fprintf(stderr, "Invalid combination of options.\n");
         fprintf(stderr, "%s\n", USAGE);
         return 1;
@@ -556,6 +609,9 @@ int main(int argc, char ** argv) {
         else if(options.pathFlag) {
             length = getLongestInducedPathLength(&g, numberOfLengths);
         }
+        else if(options.lengthFlag) {
+            length = getLength(&g);
+        }
         else {
             length = getCircumference(&g, EMPTY);
         }
@@ -577,7 +633,7 @@ int main(int argc, char ** argv) {
     free(graphString);
 
     // Print data
-    printTable(frequencies, tableString);
+    printTable(&options, frequencies, tableString);
 
     // Mention how many graphs were output
     printNumberGraphsOutput(&options, passedGraphs, tableString);

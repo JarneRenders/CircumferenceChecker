@@ -22,17 +22,17 @@ Lower bit versions are always faster than the higher bit ones, hence it is recom
 
 This helptext can be found by executing `./circumferenceChecker -h`.
 
-Usage: `./circumferenceChecker [-cf#|-pf#] [-Cdo#] [-h]`
+Usage: `./circumferenceChecker [-cf#|-pf#|-l] [-Cdo#] [-h]`
 
-Count and or filter graphs depending on their circumference, induced cycles
-or paths.
+Count and or filter graphs depending on their circumference, length, 
+induced cycles or paths.
 
 Graphs are read from stdin in graph6 format. Graphs are sent to stdout in
 graph6 format. If the input graph had a graph6 header, so will the
 output graph (if it passes through the filter).
 
 ```
-    -c, --induced-cycle\n\
+    -c, --induced-cycle
             count the longest induced cycle of each graph and print in a table.
     -C, --complement
             print all the graphs that would not have been sent to stdout and
@@ -44,7 +44,10 @@ output graph (if it passes through the filter).
             of length # depending on the presence of -c or -p. Length of path
             is the number of edges.
     -h, --help
-            print help message
+            print help message.
+    -l, --length
+            find the length of each graph, i.e. the number of edges in a
+            longest path, and print in a table.
     -o#, --output=#
             send all graphs with value # in the table to stdout.
     -p, --induced-path
