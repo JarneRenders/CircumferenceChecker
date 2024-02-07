@@ -1,5 +1,5 @@
 # CircumferenceChecker
-This program contains various tools for checking graph properties related to paths and cycles. In particular, it can be used to determine the circumference of a graph, the length of a longest induced cycle and the length of a longest induced path. The length of a path is always the number of edges it contains.
+This program contains various tools for checking graph properties related to paths and cycles. In particular, it can be used to determine the circumference or length of a graph, the length of a longest induced cycle and the length of a longest induced path. The length of a path is always the number of edges it contains.
 
 The latest version of this program can be obtained from <https://github.com/JarneRenders/CircumferenceChecker>.
 
@@ -30,6 +30,9 @@ induced cycles or paths.
 Graphs are read from stdin in graph6 format. Graphs are sent to stdout in
 graph6 format. If the input graph had a graph6 header, so will the
 output graph (if it passes through the filter).
+
+If no options are passed the program will compute the circumference of
+the input graphs.
 
 ```
     -c, --induced-cycle

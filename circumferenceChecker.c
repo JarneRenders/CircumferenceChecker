@@ -29,6 +29,9 @@ Graphs are read from stdin in graph6 format. Graphs are sent to stdout in\n\
 graph6 format. If the input graph had a graph6 header, so will the\n\
 output graph (if it passes through the filter).\n\
 \n\
+If no options are passed the program will compute the circumference of\n\
+the input graphs.\n\
+\n\
     -c, --induced-cycle\n\
             count the longest induced cycle of each graph and print in a table.\n\
     -C, --complement\n\
