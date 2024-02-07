@@ -192,28 +192,95 @@ int getCircumference(struct graph *g, bitset excludedVertices) {
 //
 //******************************************************************************
 
-// Free gNew->adjacencyList after!
-void joinWithK1(struct graph *g, struct graph *gNew) {
-    gNew->nv = g->nv + 1;
-    gNew->adjacencyList = malloc(gNew->nv * sizeof(bitset)); 
+// // Method 1: join K1 with graph and compute its circumference.
 
-    for(int i = 0; i < g->nv; i++) {
-        gNew->adjacencyList[i] = union(g->adjacencyList[i], singleton(g->nv));
+// // Free gNew->adjacencyList after!
+// void joinWithK1(struct graph *g, struct graph *gNew) {
+//     gNew->nv = g->nv + 1;
+//     gNew->adjacencyList = malloc(gNew->nv * sizeof(bitset)); 
+
+//     for(int i = 0; i < g->nv; i++) {
+//         gNew->adjacencyList[i] = union(g->adjacencyList[i], singleton(g->nv));
+//     }
+//     gNew->adjacencyList[g->nv] = complement(EMPTY, g->nv);
+// }
+
+// int getLength(struct graph *g) {
+//     struct graph g2;
+//     joinWithK1(g, &g2); 
+
+//     int length = getCircumference(&g2, EMPTY) - 2;
+//     if(length < 0) length = 0;
+
+//     free(g2.adjacencyList);
+//     return length;
+// }
+
+// Method 2: directly search for a longest path. 
+
+// Paths have an active end to which gets built, hence starting with uv will not
+// yield the same paths as starting with vu
+void searchLongestSuperPath(struct graph *g, bitset remainingVertices,
+ int lastElemOfPath, int firstElemOfPath, int *orderOfLongestPath,
+ int orderOfPath) {
+
+    //  If found path of largest possible length, we are done.
+    if(*orderOfLongestPath == g->nv) {
+        return;
     }
-    gNew->adjacencyList[g->nv] = complement(EMPTY, g->nv);
+
+    // Check whether we current path is longest.
+    if(orderOfPath > *orderOfLongestPath) {
+        *orderOfLongestPath = orderOfPath;
+    }
+    
+    bitset neighboursOfLastNotInPath = 
+     intersection(g->adjacencyList[lastElemOfPath], remainingVertices);
+
+    forEach(neighbour, neighboursOfLastNotInPath) {
+
+        int oldElemOfPath = lastElemOfPath;
+
+        removeElement(remainingVertices, oldElemOfPath);
+
+        // Neighbour is the new last element.
+        lastElemOfPath = neighbour; 
+
+        searchLongestSuperPath(g, remainingVertices, lastElemOfPath,
+         firstElemOfPath, orderOfLongestPath, orderOfPath + 1);
+
+        add(remainingVertices, oldElemOfPath);
+        lastElemOfPath = oldElemOfPath;
+    }
 }
 
 int getLength(struct graph *g) {
-    struct graph g2;
-    joinWithK1(g, &g2); 
 
-    int length = getCircumference(&g2, EMPTY) - 2;
-    if(length < 0) length = 0;
+    int orderOfLongestPath = 0;
 
-    free(g2.adjacencyList);
-    return length;
+    // For each vertex find a longest path starting with v.
+    for(int v = 0; v < g->nv; v++) {
+
+        bitset remainingVertices = complement(singleton(v), g->nv);
+
+        // The number of vertices gets stored in orderOfLongestPath
+        forEach(w, g->adjacencyList[v]) {
+
+            removeElement(remainingVertices, w);
+
+            searchLongestSuperPath(g, remainingVertices, w, v,
+             &orderOfLongestPath, 2);
+
+            add(remainingVertices, w);
+        }
+    }
+
+    //  Length of a path is number of edges in it.
+    int pathLength = orderOfLongestPath - 1;
+    if(pathLength < 0) pathLength = 0;
+
+    return pathLength;
 }
-
 
 //******************************************************************************
 //
@@ -314,17 +381,17 @@ int getLongestInducedCycleLength(struct graph *g,
 //******************************************************************************
 
 void searchLongestInducedSuperPath(struct graph *g, bitset remainingVertices,
- int lastElemOfPath, int firstElemOfPath, int *longestCycleLength,
- unsigned long long int numberOfLengths[], int pathLength) {
+ int lastElemOfPath, int firstElemOfPath, int *orderOfLongestInducedPath,
+ unsigned long long int numberOfLengths[], int orderOfPath) {
 
     // Count frequency of induced paths. Length of a path is number of edges,
     // not vertices. Used for keeping track of graphs with forbidden induced
     // path sizes.
-    numberOfLengths[pathLength - 1]++;
+    numberOfLengths[orderOfPath - 1]++;
 
     // Check whether we have a longest induced path already.
-    if(pathLength > *longestCycleLength) {
-        *longestCycleLength = pathLength;
+    if(orderOfPath > *orderOfLongestInducedPath) {
+        *orderOfLongestInducedPath = orderOfPath;
     }
     
     bitset neighboursOfLastNotInPath = 
@@ -343,7 +410,8 @@ void searchLongestInducedSuperPath(struct graph *g, bitset remainingVertices,
         lastElemOfPath = neighbour; 
 
         searchLongestInducedSuperPath(g, remainingVertices, lastElemOfPath,
-         firstElemOfPath, longestCycleLength, numberOfLengths, pathLength + 1);
+         firstElemOfPath, orderOfLongestInducedPath, numberOfLengths,
+         orderOfPath + 1);
 
         remainingVertices = union(remainingVertices, deletedVertices);
         lastElemOfPath = oldElemOfPath;
@@ -539,16 +607,17 @@ int main(int argc, char ** argv) {
                 fprintf(stderr,"Error: Unknown option: %c\n", optopt);
                 fprintf(stderr, "%s\n", USAGE);
                 fprintf(stderr,
-                 "Use ./circumferenceChecker --help for more detailed instructions.\n");
+                 "Use ./circumferenceChecker --help"
+                 " for more detailed instructions.\n");
                 return 1;
         }
     }
 
     if(options.forbiddenLength != -1 && options.output != -1) {
         fprintf(stderr,
-         "Warning: -f should not be used with -o. This will probably not give the result you expect.\n");
-        fprintf(stderr,
-         "Use ./circumferenceChecker --help for more detailed instructions.\n");
+         "Error: -f# should not be used with -o#.\n");
+        fprintf(stderr, "%s\n", USAGE);
+        return 1;       
     }
 
     if(options.cycleFlag && options.pathFlag) {
