@@ -208,6 +208,7 @@ int getLength(struct graph *g) {
     joinWithK1(g, &g2); 
 
     int length = getCircumference(&g2, EMPTY) - 2;
+    if(length < 0) length = 0;
 
     free(g2.adjacencyList);
     return length;
@@ -312,7 +313,7 @@ int getLongestInducedCycleLength(struct graph *g,
 //
 //******************************************************************************
 
-void lengthOfLongestInducedSuperPath(struct graph *g, bitset remainingVertices,
+void searchLongestInducedSuperPath(struct graph *g, bitset remainingVertices,
  int lastElemOfPath, int firstElemOfPath, int *longestCycleLength,
  unsigned long long int numberOfLengths[], int pathLength) {
 
@@ -341,7 +342,7 @@ void lengthOfLongestInducedSuperPath(struct graph *g, bitset remainingVertices,
         // Neighbour is the new last element.
         lastElemOfPath = neighbour; 
 
-        lengthOfLongestInducedSuperPath(g, remainingVertices, lastElemOfPath,
+        searchLongestInducedSuperPath(g, remainingVertices, lastElemOfPath,
          firstElemOfPath, longestCycleLength, numberOfLengths, pathLength + 1);
 
         remainingVertices = union(remainingVertices, deletedVertices);
@@ -352,7 +353,7 @@ void lengthOfLongestInducedSuperPath(struct graph *g, bitset remainingVertices,
 int getLongestInducedPathLength(struct graph *g, 
  unsigned long long int numberOfLengths[]) {
 
-    int longestInducedPathLength = 0;
+    int orderOfLongestInducedPath = 0;
 
     // For each vertex find a longest induced path starting with v.
     for(int v = 0; v < g->nv; v++) {
@@ -360,14 +361,18 @@ int getLongestInducedPathLength(struct graph *g,
         bitset remainingVertices = complement(g->adjacencyList[v], g->nv);
         removeElement(remainingVertices, v);
 
+        // The number of vertices gets stored inorderOfLongestInducedPath 
         forEach(w, g->adjacencyList[v]) {
-            lengthOfLongestInducedSuperPath(g, remainingVertices, w, v,
-             &longestInducedPathLength, numberOfLengths, 2);
+            searchLongestInducedSuperPath(g, remainingVertices, w, v,
+             &orderOfLongestInducedPath, numberOfLengths, 2);
         }
     }
 
     //  Length of a path is number of edges in it.
-    return longestInducedPathLength - 1;
+    int pathLength = orderOfLongestInducedPath - 1;
+    if(pathLength < 0) pathLength = 0;
+
+    return pathLength;
 }
 
 //******************************************************************************
