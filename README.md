@@ -55,4 +55,7 @@ the input graphs.
             send all graphs with value # in the table to stdout.
     -p, --induced-path
             count the longest induced path of each graph and print in a table.
+    -h, --hamiltonian
+            when computing circumference (length), do a hamiltonicity
+            (traceability) check first.
 ```

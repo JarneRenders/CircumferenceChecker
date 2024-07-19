@@ -51,7 +51,10 @@ the input graphs.\n\
     -o#, --output=#\n\
             send all graphs with value # in the table to stdout.\n\
     -p, --induced-path\n\
-            count the longest induced path of each graph and print in a table.\n"
+            count the longest induced path of each graph and print in a table.\n\
+    -h, --hamiltonian\n\
+            when computing circumference (length), do a hamiltonicity\n\
+            (traceability) check first\n"
 
 
 #include <stdio.h>
@@ -60,13 +63,24 @@ the input graphs.\n\
 #include <getopt.h>
 #include <time.h>
 #include <string.h>
-#include "libs/readGraph6.h"
 #include "libs/bitset.h"
+#include "libs/readGraph6.h"
 #include "libs/hamiltonicityMethods.h"
 
 struct graph {
     bitset *adjacencyList;
     int nv;
+};
+
+struct options {
+    bool cycleFlag;
+    bool pathFlag;
+    bool differenceFlag;
+    bool complementFlag;
+    bool lengthFlag;
+    bool hamiltonianCheck;
+    int forbiddenLength;
+    int output;
 };
 
 void printGraph(struct graph *g) {
@@ -143,7 +157,13 @@ int findLowestDegreeVertex(struct graph *g, bitset includedVertices) {
     return start;
 }
 
-int getCircumference(struct graph *g, bitset excludedVertices) {
+int getCircumference(struct graph *g, struct options *options, bitset excludedVertices) {
+
+    if(options->hamiltonianCheck) {
+        if(isHamiltonian(g->adjacencyList, g->nv, EMPTY, false, false)) {
+            return g->nv;
+        }
+    }
 
     // Check backwards from k = n to 3 if there is a cycle of length k.
     for(int i = g->nv; i > 2; i--) {
@@ -257,9 +277,15 @@ void searchLongestSuperPath(struct graph *g, bitset remainingVertices,
     }
 }
 
-int getLength(struct graph *g) {
+int getLength(struct graph *g, struct options* options) {
 
     int orderOfLongestPath = 0;
+
+    if(options->hamiltonianCheck) {
+        if(isTraceable(g->adjacencyList, g->nv, EMPTY, false, false)) {
+            return g->nv-1;
+        }
+    }
 
     // For each vertex find a longest path starting with v.
     for(int v = 0; v < g->nv; v++) {
@@ -452,15 +478,7 @@ int getLongestInducedPathLength(struct graph *g,
 //
 //******************************************************************************
 
-struct options {
-    bool cycleFlag;
-    bool pathFlag;
-    bool differenceFlag;
-    bool complementFlag;
-    bool lengthFlag;
-    int forbiddenLength;
-    int output;
-};
+
 
 bool shouldOutput(struct graph *g, int length, 
  unsigned long long int numberOfLengths[],  int optionsNumber, 
@@ -573,9 +591,10 @@ int main(int argc, char ** argv) {
             {"length", no_argument, NULL, 'l'},
             {"output", required_argument, NULL, 'o'},
             {"induced-path", no_argument, NULL, 'p'},
+            {"hamiltonian", no_argument, NULL, 'H'}
         };
 
-        opt = getopt_long(argc, argv, "cCdf:hlo:p", long_options, &option_index);
+        opt = getopt_long(argc, argv, "cCdf:hlo:pH", long_options, &option_index);
         if (opt == -1) break;
         switch(opt) {
             case 'c':
@@ -605,6 +624,9 @@ int main(int argc, char ** argv) {
             case 'p':
                 options.pathFlag = true;
                 tableString = "longest induced path";
+                break;
+            case 'H':
+                options.hamiltonianCheck = true;
                 break;
             case '?':
                 fprintf(stderr,"Error: Unknown option: %c\n", optopt);
@@ -687,10 +709,10 @@ int main(int argc, char ** argv) {
             length = getLongestInducedPathLength(&g, numberOfLengths);
         }
         else if(options.lengthFlag) {
-            length = getLength(&g);
+            length = getLength(&g, &options);
         }
         else {
-            length = getCircumference(&g, EMPTY);
+            length = getCircumference(&g, &options, EMPTY);
         }
 
         if(shouldOutput(&g, length, numberOfLengths,  optionsNumber, &options)) {
